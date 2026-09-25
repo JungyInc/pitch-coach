@@ -280,14 +280,33 @@
   // ---------- audio: mic + piano synth ----------
   let ac = null, master = null, analyser = null, stream = null, running = false, raf = 0;
   const BUF = 2048, buf = new Float32Array(BUF);
+  const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  // On iOS, Web Audio is muted by the ring/silent switch and gets very quiet once the mic is open.
+  // Routing the synth through an <audio> element makes it count as media playback, which avoids both.
+  const outEl = document.createElement("audio"); outEl.setAttribute("playsinline", ""); outEl.autoplay = true;
+  function buildAudio() {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain(); master.gain.value = 0.7;
+    if (IOS) {
+      const dest = ac.createMediaStreamDestination(); master.connect(dest);
+      outEl.srcObject = dest.stream; outEl.play().catch(() => {});
+    } else master.connect(ac.destination);
+    // silent tick to unlock output on browsers that require a gesture
+    const b = ac.createBuffer(1, 1, ac.sampleRate), s = ac.createBufferSource(); s.buffer = b; s.connect(master); s.start(0);
+    ac.onstatechange = updateSoundChip; updateSoundChip();
+  }
   function ensureAudio() {
-    if (!ac) {
-      ac = new (window.AudioContext || window.webkitAudioContext)();
-      master = ac.createGain(); master.gain.value = 0.6; master.connect(ac.destination);
-    }
-    if (ac.state === "suspended") ac.resume();
+    if (!ac) buildAudio();
+    if (ac.state !== "running") ac.resume().then(updateSoundChip).catch(() => {});
+    if (IOS && outEl.paused) outEl.play().catch(() => {});
     return ac;
   }
+  function updateSoundChip() {
+    if (!ac) return;
+    els.statusText.textContent = (running ? ac.sampleRate + " Hz" : "mic off") + (ac.state === "running" ? "" : " · tap to enable sound");
+  }
+  document.addEventListener("pointerdown", () => { if (ac) ensureAudio(); }, { passive: true });
+  els.status.addEventListener("click", () => ensureAudio());
   function playNote(midi, dur = 1.0, when = 0, vel = 1) {
     ensureAudio();
     const t = ac.currentTime + when, f = midiToHz(midi);
@@ -312,12 +331,15 @@
       els.hint.textContent = "Mic access was refused. Allow the microphone for this page and try again.";
       els.hint.classList.add("err"); return false;
     }
+    // Rebuild the engine after the mic opens: iOS switches the hardware sample rate when
+    // recording starts, and a context created earlier goes silent or plays at the wrong pitch.
+    if (ac) { try { ac.close(); } catch {} ac = null; }
     ensureAudio();
     const src = ac.createMediaStreamSource(stream);
     analyser = ac.createAnalyser(); analyser.fftSize = BUF; src.connect(analyser);
     running = true;
     els.toggle.textContent = "Stop"; els.toggle.classList.add("live");
-    els.status.classList.add("live"); els.statusText.textContent = ac.sampleRate + " Hz";
+    els.status.classList.add("live"); updateSoundChip();
     els.hint.classList.remove("err"); setHint();
     resetSession();
     try { navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {}); } catch {}
@@ -331,7 +353,7 @@
     stream = null; analyser = null;
     stopDrill(); songStop();
     els.toggle.textContent = "Start microphone"; els.toggle.classList.remove("live");
-    els.status.classList.remove("live"); els.statusText.textContent = "mic off";
+    els.status.classList.remove("live"); updateSoundChip();
   }
   els.toggle.addEventListener("click", () => running ? stopMic() : startMic());
 
@@ -412,7 +434,7 @@
     return `<span class="letter">${letter}</span>${acc ? `<span class="acc">${acc}</span>` : ""}<span class="oct">${oct}</span>${syl ? `<span class="syl">${syl}</span>` : ""}`;
   }
   function renderNote(midi, nearest, centsOff, good, hz, clarity, target) {
-    if (mode === "drill" && drill.active) {
+    if (mode === "drill" && drill.active && drill.i >= 0) {
       const m = drill.notes[drill.i];
       els.note.classList.remove("silent");
       els.note.innerHTML = noteHTML(m, drill.syl[drill.i]);
