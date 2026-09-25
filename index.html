@@ -285,10 +285,11 @@
   const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   // On iOS, Web Audio is muted by the ring/silent switch and gets very quiet once the mic is open.
   // Routing the synth through an <audio> element makes it count as media playback, which avoids both.
-  const outEl = document.createElement("audio"); outEl.setAttribute("playsinline", ""); outEl.autoplay = true;
+  const outEl = document.createElement("audio"); outEl.setAttribute("playsinline", ""); outEl.autoplay = true; outEl.volume = 1;
+  outEl.style.display = "none"; document.body.appendChild(outEl);
   function buildAudio() {
     ac = new (window.AudioContext || window.webkitAudioContext)();
-    master = ac.createGain(); master.gain.value = 0.7;
+    master = ac.createGain(); master.gain.value = IOS ? 1.0 : 0.7;
     if (IOS) {
       const dest = ac.createMediaStreamDestination(); master.connect(dest);
       outEl.srcObject = dest.stream; outEl.play().catch(() => {});
@@ -326,7 +327,11 @@
     }
   }
 
+  // iOS routes sound to the earpiece (quietly) while the mic is open. Safari's Audio Session API
+  // lets the page ask for speaker + mic together, like a speakerphone call.
+  function setAudioSession(type) { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {} }
   async function startMic() {
+    setAudioSession("play-and-record");
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
     } catch (e) {
@@ -353,6 +358,7 @@
     running = false; cancelAnimationFrame(raf);
     if (stream) stream.getTracks().forEach(t => t.stop());
     stream = null; analyser = null;
+    setAudioSession("playback");
     stopDrill(); songStop();
     els.toggle.textContent = "Start microphone"; els.toggle.classList.remove("live");
     els.status.classList.remove("live"); updateSoundChip();
@@ -365,7 +371,7 @@
       target: "Tap Hear it, then match it. The timer counts seconds you stay within 15 cents.",
       drill: "Each step: the piano plays a note, then you sing it back. Green squares are in tune.",
       song: "Pick a song from the playlist and tap Add, or import your own MIDI. The piano plays the vocal line; sing along and follow the bars.",
-    }[mode];
+    }[mode] + (IOS && running ? " No sound? Flip the ring/silent switch on and turn the volume up." : "");
   }
 
   // ---------- session state ----------
@@ -747,8 +753,13 @@
     const l = LIBRARY[+els.libSel.value]; if (!l) return;
     els.songMsg.textContent = "loading…"; els.libAdd.disabled = true;
     try {
-      const r = await fetch(l.url); if (!r.ok) throw new Error("HTTP " + r.status);
-      addSong(l.name, parseMidi(await r.arrayBuffer()), { track: l.track, src: l.url });
+      let buf = null, err = null;
+      for (let attempt = 1; attempt <= 3 && !buf; attempt++) {   // bitmidi drops requests now and then
+        try { const r = await fetch(l.url, { cache: "no-store" }); if (!r.ok) throw new Error("HTTP " + r.status); buf = await r.arrayBuffer(); }
+        catch (e) { err = e; els.songMsg.textContent = `loading… (retry ${attempt})`; await new Promise(res => setTimeout(res, 800 * attempt)); }
+      }
+      if (!buf) throw err;
+      addSong(l.name, parseMidi(buf), { track: l.track, src: l.url });
     } catch (e) { els.songMsg.textContent = "Couldn't load it (" + e.message + "). Try again, or download the file and use Import."; }
     els.libAdd.disabled = false;
   });
