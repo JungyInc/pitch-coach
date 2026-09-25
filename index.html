@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1420">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Pitch Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1420;
+    --panel: #171d2b;
+    --panel-2: #1f2637;
+    --line: #2a3345;
+    --text: #e8ecf3;
+    --muted: #8b95a8;
+    --accent: #f5b942;
+    --good: #5dd39e;
+    --warn: #f0b35b;
+    --bad: #f06a5b;
+    --display: "Fraunces", Georgia, "Times New Roman", serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.45;
+    padding-inline: 16px;
+    padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .app {
+    max-width: 520px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 100%;
+    padding-block: 14px 24px;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  header h1 {
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: 22px;
+    margin: 0;
+    letter-spacing: 0.01em;
+  }
+  header h1 em { font-style: italic; font-weight: 600; color: var(--accent); }
+  .status {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .status .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--line);
+  }
+  .status.live .dot { background: var(--good); box-shadow: 0 0 8px var(--good); }
+
+  .modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 3px;
+    gap: 3px;
+  }
+  .modes button {
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    font: 500 14px var(--body);
+    padding: 9px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .modes button[aria-pressed="true"] { background: var(--panel-2); color: var(--text); }
+  .modes button:focus-visible, button:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .note-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 120px;
+  }
+  .note {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 104px;
+    line-height: 0.9;
+    letter-spacing: -0.02em;
+    font-variation-settings: "opsz" 144;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .note .acc { font-size: 44px; font-weight: 300; color: var(--accent); align-self: flex-start; margin-top: 8px; }
+  .note .oct { font-size: 32px; font-weight: 300; color: var(--muted); }
+  .note.silent { color: var(--line); }
+  .readout {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+    display: grid;
+    gap: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .readout b { color: var(--text); font-weight: 500; font-size: 18px; }
+  .readout .cents { font-size: 26px; font-weight: 500; }
+  .readout .cents.good { color: var(--good); }
+  .readout .cents.warn { color: var(--warn); }
+  .readout .cents.bad { color: var(--bad); }
+
+  .target-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .target-line select {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font: 500 15px var(--mono);
+  }
+  .target-line label.chk { display: flex; align-items: center; gap: 6px; }
+  .target-line .hold { font-family: var(--mono); font-variant-numeric: tabular-nums; margin-left: auto; }
+  .target-line .hold b { color: var(--good); font-weight: 500; }
+
+  .meter { position: relative; height: 54px; }
+  .meter canvas { width: 100%; height: 100%; display: block; }
+
+  .trace {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 10px;
+    height: 220px;
+  }
+  .trace canvas { width: 100%; height: 100%; display: block; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+  }
+  .primary {
+    background: var(--accent);
+    color: #1a1406;
+    border: 0;
+    border-radius: 12px;
+    padding: 14px 18px;
+    font: 600 16px var(--body);
+    cursor: pointer;
+  }
+  .primary.live { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  .primary:active { transform: translateY(1px); }
+  .a4 {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .a4 input {
+    width: 58px; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+    font: 500 14px var(--mono); text-align: center;
+  }
+  .hint { color: var(--muted); font-size: 13px; margin: 0; }
+  .hint.err { color: var(--bad); }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .stat .k { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .stat .v { font-family: var(--mono); font-size: 18px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Pitch <em>Coach</em></h1>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">mic off</span></div>
+  </header>
+
+  <div class="modes" role="group" aria-label="Mode">
+    <button id="modeFree" aria-pressed="true">Free sing</button>
+    <button id="modeTarget" aria-pressed="false">Hold a note</button>
+  </div>
+
+  <section class="stage">
+    <div class="note-row">
+      <div class="note silent" id="note"><span class="letter">—</span></div>
+      <div class="readout">
+        <div class="cents" id="cents">±0¢</div>
+        <div><b id="hz">0.0</b> Hz</div>
+        <div id="clarity">clarity —</div>
+      </div>
+    </div>
+
+    <div class="target-line" id="targetLine" hidden>
+      <span>Target</span>
+      <select id="targetSel" aria-label="Target note"></select>
+      <label class="chk"><input type="checkbox" id="anyOct" checked> any octave</label>
+      <span class="hold">held <b id="held">0.0</b>s</span>
+    </div>
+
+    <div class="meter"><canvas id="meter"></canvas></div>
+  </section>
+
+  <section class="trace"><canvas id="trace"></canvas></section>
+
+  <div class="stats">
+    <div class="stat"><div class="k">In tune</div><div class="v" id="pctGood">—</div></div>
+    <div class="stat"><div class="k">Low</div><div class="v" id="lowNote">—</div></div>
+    <div class="stat"><div class="k">High</div><div class="v" id="highNote">—</div></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="toggle">Start microphone</button>
+    <div class="a4">A4 <input id="a4" type="number" value="440" min="415" max="466" step="1"> Hz</div>
+  </div>
+  <p class="hint" id="hint">Tap start, allow the mic, and sing a steady "ah". Green means within 10 cents of the note.</p>
+</div>
+
+<script>
+(() => {
+  const NAMES = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
+  const $ = id => document.getElementById(id);
+  const els = {
+    note: $("note"), cents: $("cents"), hz: $("hz"), clarity: $("clarity"),
+    status: $("status"), statusText: $("statusText"), toggle: $("toggle"),
+    hint: $("hint"), a4: $("a4"), meter: $("meter"), trace: $("trace"),
+    modeFree: $("modeFree"), modeTarget: $("modeTarget"), targetLine: $("targetLine"),
+    targetSel: $("targetSel"), anyOct: $("anyOct"), held: $("held"),
+    pctGood: $("pctGood"), lowNote: $("lowNote"), highNote: $("highNote"),
+  };
+
+  // ---------- settings (per-device conveniences) ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("pc." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("pc." + k, JSON.stringify(v)); } catch {} },
+  };
+  let A4 = store.get("a4", 440);
+  let mode = store.get("mode", "free");
+  let targetMidi = store.get("target", 48); // C3
+  let anyOctave = store.get("anyOct", true);
+  els.a4.value = A4;
+  els.anyOct.checked = anyOctave;
+
+  // target picker: E2 (40) .. C6 (84) covers most singing ranges
+  for (let m = 40; m <= 84; m++) {
+    const o = document.createElement("option");
+    o.value = m; o.textContent = midiName(m);
+    if (m === targetMidi) o.selected = true;
+    els.targetSel.appendChild(o);
+  }
+
+  function midiName(m) { return NAMES[m % 12] + (Math.floor(m / 12) - 1); }
+  function hzToMidi(hz) { return 69 + 12 * Math.log2(hz / A4); }
+  function midiToHz(m) { return A4 * Math.pow(2, (m - 69) / 12); }
+
+  // ---------- pitch detection: McLeod Pitch Method (NSDF) ----------
+  function detectPitch(buf, sampleRate) {
+    const n = buf.length;
+    let rms = 0;
+    for (let i = 0; i < n; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / n);
+    if (rms < 0.01) return { hz: -1, clarity: 0, rms };
+
+    const maxLag = Math.min(n - 1, Math.floor(sampleRate / 55)); // down to ~55 Hz
+    const nsdf = new Float32Array(maxLag);
+    for (let tau = 0; tau < maxLag; tau++) {
+      let acf = 0, m = 0;
+      for (let i = 0; i < n - tau; i++) {
+        const a = buf[i], b = buf[i + tau];
+        acf += a * b; m += a * a + b * b;
+      }
+      nsdf[tau] = m > 0 ? 2 * acf / m : 0;
+    }
+    // key maxima between positive zero crossings
+    const peaks = [];
+    let pos = false, maxPos = -1, maxVal = -1;
+    for (let tau = 1; tau < maxLag; tau++) {
+      if (!pos && nsdf[tau] > 0 && nsdf[tau - 1] <= 0) { pos = true; maxPos = -1; maxVal = -1; }
+      if (pos) {
+        if (nsdf[tau] > maxVal) { maxVal = nsdf[tau]; maxPos = tau; }
+        if (nsdf[tau] <= 0 && nsdf[tau - 1] > 0) { pos = false; if (maxPos > 0) peaks.push(maxPos); }
+      }
+    }
+    if (pos && maxPos > 0) peaks.push(maxPos);
+    if (!peaks.length) return { hz: -1, clarity: 0, rms };
+
+    let best = 0;
+    for (const p of peaks) if (nsdf[p] > best) best = nsdf[p];
+    const threshold = 0.85 * best;
+    let chosen = -1;
+    for (const p of peaks) { if (nsdf[p] >= threshold) { chosen = p; break; } }
+    // parabolic interpolation
+    let tau = chosen;
+    if (tau > 0 && tau < maxLag - 1) {
+      const a = nsdf[tau - 1], b = nsdf[tau], c = nsdf[tau + 1];
+      const d = a - 2 * b + c;
+      if (d !== 0) tau = tau - (c - a) / (2 * d);
+    }
+    return { hz: sampleRate / tau, clarity: nsdf[chosen], rms };
+  }
+
+  // ---------- audio ----------
+  let ctx = null, analyser = null, stream = null, running = false, raf = 0;
+  const BUF = 2048;
+  const buf = new Float32Array(BUF);
+
+  async function start() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+    } catch (e) {
+      els.hint.textContent = "Mic access was refused. Allow the microphone for this page and try again.";
+      els.hint.classList.add("err");
+      return;
+    }
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = BUF;
+    src.connect(analyser);
+    running = true;
+    els.toggle.textContent = "Stop";
+    els.toggle.classList.add("live");
+    els.status.classList.add("live");
+    els.statusText.textContent = ctx.sampleRate + " Hz";
+    els.hint.classList.remove("err");
+    els.hint.textContent = mode === "free"
+      ? "Sing. The letter is the closest note; the meter shows how sharp or flat you are."
+      : "Hold the target note. The timer counts seconds you stay within 15 cents.";
+    resetSession();
+    try { navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {}); } catch {}
+    loop();
+  }
+  function stop() {
+    running = false;
+    cancelAnimationFrame(raf);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (ctx) ctx.close();
+    ctx = analyser = stream = null;
+    els.toggle.textContent = "Start microphone";
+    els.toggle.classList.remove("live");
+    els.status.classList.remove("live");
+    els.statusText.textContent = "mic off";
+  }
+  els.toggle.addEventListener("click", () => running ? stop() : start());
+
+  // ---------- session state ----------
+  const HISTORY_SEC = 8;
+  let history = [];   // {t, midi (float) | null, good}
+  let frames = 0, goodFrames = 0, lowMidi = Infinity, highMidi = -Infinity;
+  let heldSec = 0, lastT = 0;
+  const recent = [];  // smoothing window of last few midi values
+
+  function resetSession() {
+    history = []; frames = 0; goodFrames = 0; lowMidi = Infinity; highMidi = -Infinity;
+    heldSec = 0; lastT = performance.now(); recent.length = 0;
+    els.pctGood.textContent = "—"; els.lowNote.textContent = "—"; els.highNote.textContent = "—";
+    els.held.textContent = "0.0";
+  }
+
+  function loop() {
+    if (!running) return;
+    analyser.getFloatTimeDomainData(buf);
+    const r = detectPitch(buf, ctx.sampleRate);
+    const now = performance.now();
+    const dt = (now - lastT) / 1000; lastT = now;
+
+    let midi = null, clarity = r.clarity;
+    if (r.hz > 0 && r.clarity > 0.88 && r.hz > 55 && r.hz < 1200) {
+      recent.push(hzToMidi(r.hz));
+      if (recent.length > 3) recent.shift();
+      const s = [...recent].sort((a, b) => a - b);
+      midi = s[Math.floor(s.length / 2)];
+    } else {
+      recent.length = 0;
+    }
+
+    let centsOff = 0, good = false, nearest = null;
+    if (midi !== null) {
+      if (mode === "target") {
+        let t = targetMidi;
+        if (anyOctave) { // move target to the octave nearest the sung pitch
+          t = targetMidi + 12 * Math.round((midi - targetMidi) / 12);
+        }
+        nearest = t;
+        centsOff = (midi - t) * 100;
+      } else {
+        nearest = Math.round(midi);
+        centsOff = (midi - nearest) * 100;
+      }
+      good = Math.abs(centsOff) <= (mode === "target" ? 15 : 10);
+      frames++; if (good) goodFrames++;
+      lowMidi = Math.min(lowMidi, midi); highMidi = Math.max(highMidi, midi);
+      if (mode === "target") heldSec = good ? heldSec + dt : 0;
+    } else if (mode === "target") {
+      heldSec = 0;
+    }
+
+    history.push({ t: now, midi, good });
+    while (history.length && now - history[0].t > HISTORY_SEC * 1000) history.shift();
+
+    renderNote(midi, nearest, centsOff, good, r.hz, clarity);
+    renderMeter(midi === null ? null : centsOff, good);
+    renderTrace(now);
+    if (frames) {
+      els.pctGood.textContent = Math.round(100 * goodFrames / frames) + "%";
+      els.lowNote.textContent = midiName(Math.round(lowMidi));
+      els.highNote.textContent = midiName(Math.round(highMidi));
+    }
+    els.held.textContent = heldSec.toFixed(1);
+    raf = requestAnimationFrame(loop);
+  }
+
+  // ---------- rendering ----------
+  function renderNote(midi, nearest, centsOff, good, hz, clarity) {
+    if (midi === null) {
+      els.note.classList.add("silent");
+      els.note.innerHTML = '<span class="letter">—</span>';
+      els.cents.textContent = "±0¢"; els.cents.className = "cents";
+      els.hz.textContent = "0.0"; els.clarity.textContent = "clarity —";
+      return;
+    }
+    els.note.classList.remove("silent");
+    const showMidi = mode === "target" ? nearest : nearest;
+    const name = NAMES[((showMidi % 12) + 12) % 12];
+    const letter = name[0], acc = name.length > 1 ? name[1] : "";
+    const oct = Math.floor(showMidi / 12) - 1;
+    els.note.innerHTML = `<span class="letter">${letter}</span>${acc ? `<span class="acc">${acc}</span>` : ""}<span class="oct">${oct}</span>`;
+    const c = Math.round(centsOff);
+    els.cents.textContent = (c > 0 ? "+" : c < 0 ? "−" : "±") + Math.abs(c) + "¢";
+    els.cents.className = "cents " + (good ? "good" : Math.abs(c) <= 30 ? "warn" : "bad");
+    els.hz.textContent = hz.toFixed(1);
+    els.clarity.textContent = "clarity " + Math.round(clarity * 100) + "%";
+  }
+
+  function fitCanvas(c) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    }
+    const g = c.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { g, w, h };
+  }
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  function renderMeter(cents, good) {
+    const { g, w, h } = fitCanvas(els.meter);
+    g.clearRect(0, 0, w, h);
+    const pad = 12, y = h * 0.55, x0 = pad, x1 = w - pad;
+    const xOf = c => x0 + (x1 - x0) * (Math.max(-50, Math.min(50, c)) + 50) / 100;
+    // in-tune band
+    g.fillStyle = "rgba(93,211,158,0.14)";
+    g.fillRect(xOf(-10), y - 14, xOf(10) - xOf(-10), 28);
+    // baseline + ticks
+    g.strokeStyle = css("--line"); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke();
+    g.fillStyle = css("--muted"); g.font = "11px " + css("--mono"); g.textAlign = "center";
+    for (const c of [-50, -25, 0, 25, 50]) {
+      g.beginPath(); g.moveTo(xOf(c), y - (c === 0 ? 14 : 8)); g.lineTo(xOf(c), y + (c === 0 ? 14 : 8)); g.stroke();
+      g.fillText((c > 0 ? "+" : "") + c, xOf(c), h - 2);
+    }
+    if (cents === null) return;
+    const x = xOf(cents);
+    g.fillStyle = good ? css("--good") : Math.abs(cents) <= 30 ? css("--warn") : css("--bad");
+    g.beginPath(); g.moveTo(x, y - 18); g.lineTo(x - 7, y - 30); g.lineTo(x + 7, y - 30); g.closePath(); g.fill();
+    g.fillRect(x - 1.5, y - 18, 3, 36);
+  }
+
+  function renderTrace(now) {
+    const { g, w, h } = fitCanvas(els.trace);
+    g.clearRect(0, 0, w, h);
+    const padL = 34, padR = 8, padT = 8, padB = 8;
+    // vertical window: 2 octaves centred on recent singing (or on target)
+    let vals = history.filter(p => p.midi !== null).map(p => p.midi);
+    let center = mode === "target" ? targetMidi : 55;
+    if (vals.length) center = vals.reduce((a, b) => a + b, 0) / vals.length;
+    if (mode === "target" && anyOctave && vals.length) {
+      center = targetMidi + 12 * Math.round((center - targetMidi) / 12);
+    }
+    const lo = Math.round(center) - 12, hi = Math.round(center) + 12;
+    const yOf = m => padT + (h - padT - padB) * (hi - m) / (hi - lo);
+    const xOf = t => padL + (w - padL - padR) * (1 - (now - t) / (HISTORY_SEC * 1000));
+
+    // note rails
+    g.font = "10px " + css("--mono"); g.textAlign = "right"; g.textBaseline = "middle";
+    for (let m = lo; m <= hi; m++) {
+      const y = yOf(m);
+      const isC = m % 12 === 0, isTarget = mode === "target" && (anyOctave ? (m - targetMidi) % 12 === 0 : m === targetMidi);
+      g.strokeStyle = isTarget ? "rgba(245,185,66,0.55)" : isC ? "rgba(139,149,168,0.35)" : "rgba(42,51,69,0.9)";
+      g.lineWidth = isTarget ? 1.5 : 1;
+      g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+      if (isC || isTarget) { g.fillStyle = isTarget ? css("--accent") : css("--muted"); g.fillText(midiName(m), padL - 6, y); }
+    }
+    // trace
+    let prev = null;
+    for (const p of history) {
+      if (p.midi === null || p.midi < lo - 1 || p.midi > hi + 1) { prev = null; continue; }
+      const x = xOf(p.t), y = yOf(p.midi);
+      if (prev) {
+        g.strokeStyle = p.good ? css("--good") : css("--accent");
+        g.lineWidth = 2.5;
+        g.beginPath(); g.moveTo(prev.x, prev.y); g.lineTo(x, y); g.stroke();
+      }
+      prev = { x, y };
+    }
+    if (prev) { g.fillStyle = css("--text"); g.beginPath(); g.arc(prev.x, prev.y, 3.5, 0, Math.PI * 2); g.fill(); }
+  }
+
+  // ---------- controls ----------
+  function setMode(m) {
+    mode = m; store.set("mode", m);
+    els.modeFree.setAttribute("aria-pressed", m === "free");
+    els.modeTarget.setAttribute("aria-pressed", m === "target");
+    els.targetLine.hidden = m !== "target";
+    resetSession();
+    if (!running) renderTrace(performance.now());
+  }
+  els.modeFree.addEventListener("click", () => setMode("free"));
+  els.modeTarget.addEventListener("click", () => setMode("target"));
+  els.targetSel.addEventListener("change", () => { targetMidi = +els.targetSel.value; store.set("target", targetMidi); resetSession(); });
+  els.anyOct.addEventListener("change", () => { anyOctave = els.anyOct.checked; store.set("anyOct", anyOctave); resetSession(); });
+  els.a4.addEventListener("change", () => {
+    const v = Math.max(415, Math.min(466, +els.a4.value || 440));
+    A4 = v; els.a4.value = v; store.set("a4", v);
+  });
+  window.addEventListener("resize", () => { renderMeter(null, false); renderTrace(performance.now()); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && running) stop(); });
+
+  setMode(mode);
+  renderMeter(null, false);
+  renderTrace(performance.now());
+
+  // expose for testing
+  window.__pitch = { detectPitch };
+})();
+</script>
+</body>
+</html>
