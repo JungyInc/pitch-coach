@@ -169,7 +169,9 @@
     <div id="songBox" hidden style="display:flex;flex-direction:column;gap:10px">
       <div class="songlist" id="songlist"></div>
       <div class="row">
-        <span class="file"><button class="btn">＋ Import MIDI</button><input type="file" id="midiFile" accept=".mid,.midi,audio/midi"></span>
+        <select id="libSel" aria-label="Karaoke playlist"></select>
+        <button class="btn" id="libAdd">＋ Add</button>
+        <span class="file"><button class="btn">Import MIDI</button><input type="file" id="midiFile" accept=".mid,.midi,audio/midi"></span>
         <span id="songMsg" class="mono"></span>
       </div>
       <div class="row" id="songOpts" hidden>
@@ -219,7 +221,7 @@
   ["note","cents","hz","clarity","status","statusText","toggle","hint","a4","meter","trace","roll",
    "targetLine","targetSel","anyOct","held","hearBtn","pctGood","lowNote","highNote",
    "drillBox","drillSel","drillRoot","drillTempo","steps","drillStart","drillMsg",
-   "songBox","songlist","midiFile","songMsg","songOpts","songOpts2","songCtl","trackSel","songRate","songOct",
+   "songBox","songlist","midiFile","songMsg","libSel","libAdd","songOpts","songOpts2","songCtl","trackSel","songRate","songOct",
    "guideOn","bandOn","songScore","songPlay","songRewind","songTime","traceBox","rollBox","meterBox"]
    .forEach(id => els[id] = $(id));
 
@@ -362,7 +364,7 @@
       free: "Sing. The letter is the closest note; the meter shows how sharp or flat you are.",
       target: "Tap Hear it, then match it. The timer counts seconds you stay within 15 cents.",
       drill: "Each step: the piano plays a note, then you sing it back. Green squares are in tune.",
-      song: "Import a MIDI file of the song. The piano plays the vocal line; sing along and follow the bars.",
+      song: "Pick a song from the playlist and tap Add, or import your own MIDI. The piano plays the vocal line; sing along and follow the bars.",
     }[mode];
   }
 
@@ -606,7 +608,7 @@
       if (str(4) !== "MTrk") throw new Error("Bad track");
       const len = u32(), end = p + len;
       let tick = 0, status = 0, name = "";
-      const on = new Map(), notes = []; let chans = new Set();
+      const on = new Map(), notes = []; let chans = new Set(); const prog = {};
       while (p < end) {
         tick += vlq();
         let b = u8[p];
@@ -622,11 +624,14 @@
           if (type === 0x90 && v > 0) { on.set(ch * 128 + n, { tick, v }); chans.add(ch); }
           else { const k = ch * 128 + n, s = on.get(k); if (s) { notes.push({ m: n, tick: s.tick, dtick: tick - s.tick, ch, v: s.v }); on.delete(k); } }
         } else if (type === 0xa0 || type === 0xb0 || type === 0xe0) p += 2;
-        else if (type === 0xc0 || type === 0xd0) p += 1;
+        else if (type === 0xc0) { if (prog[ch] === undefined) prog[ch] = u8[p]; p += 1; }
+        else if (type === 0xd0) p += 1;
         else p++;
       }
       p = end;
-      tracks.push({ name, notes, chans: [...chans] });
+      if (chans.size <= 1) tracks.push({ name, notes, chans: [...chans], prog: prog[[...chans][0]] });
+      else for (const ch of [...chans].sort((a, b) => a - b)) // format-0 style: one track, many channels → split
+        tracks.push({ name: (name ? name + " · " : "") + "ch" + (ch + 1), notes: notes.filter(n => n.ch === ch), chans: [ch], prog: prog[ch] });
     }
     tempos.sort((a, b) => a.tick - b.tick);
     // tick -> seconds
@@ -639,24 +644,32 @@
     const toSec = tick => { let s = segs[0]; for (const g of segs) { if (g.tick <= tick) s = g; else break; } return s.sec + (tick - s.tick) / div * s.us / 1e6; };
     for (const tr of tracks) for (const n of tr.notes) { n.t = toSec(n.tick); n.d = Math.max(0.05, toSec(n.tick + n.dtick) - n.t); }
     return tracks.map((tr, i) => ({
-      idx: i, name: tr.name, drums: tr.chans.length === 1 && tr.chans[0] === 9,
+      idx: i, name: tr.name, prog: tr.prog, inst: tr.prog === undefined ? "" : GM[tr.prog] || "",
       notes: tr.notes.filter(n => n.ch !== 9).map(n => ({ m: n.m, t: +n.t.toFixed(3), d: +n.d.toFixed(3), v: n.v })).sort((a, b) => a.t - b.t),
-    })).filter(tr => tr.notes.length);
+    })).filter(tr => tr.notes.length >= 8);
   }
+  const GM = ("Piano,Bright Piano,E.Grand,Honky-tonk,E.Piano 1,E.Piano 2,Harpsichord,Clavinet,Celesta,Glockenspiel,Music Box,Vibraphone,Marimba,Xylophone,Tubular Bells,Dulcimer,Drawbar Organ,Perc Organ,Rock Organ,Church Organ,Reed Organ,Accordion,Harmonica,Tango Accordion,Nylon Guitar,Steel Guitar,Jazz Guitar,Clean Guitar,Muted Guitar,Overdrive Guitar,Distortion Guitar,Guitar Harmonics,Acoustic Bass,Finger Bass,Pick Bass,Fretless Bass,Slap Bass 1,Slap Bass 2,Synth Bass 1,Synth Bass 2,Violin,Viola,Cello,Contrabass,Tremolo Strings,Pizzicato,Harp,Timpani,Strings 1,Strings 2,Synth Strings 1,Synth Strings 2,Choir Aahs,Voice Oohs,Synth Voice,Orchestra Hit,Trumpet,Trombone,Tuba,Muted Trumpet,French Horn,Brass,Synth Brass 1,Synth Brass 2,Soprano Sax,Alto Sax,Tenor Sax,Baritone Sax,Oboe,English Horn,Bassoon,Clarinet,Piccolo,Flute,Recorder,Pan Flute,Bottle,Shakuhachi,Whistle,Ocarina,Lead Square,Lead Saw,Lead Calliope,Lead Chiff,Lead Charang,Lead Voice,Lead Fifths,Lead Bass,Pad New Age,Pad Warm,Pad Polysynth,Pad Choir,Pad Bowed,Pad Metallic,Pad Halo,Pad Sweep,FX Rain,FX Soundtrack,FX Crystal,FX Atmosphere,FX Brightness,FX Goblins,FX Echoes,FX Sci-fi,Sitar,Banjo,Shamisen,Koto,Kalimba,Bagpipe,Fiddle,Shanai,Tinkle Bell,Agogo,Steel Drums,Woodblock,Taiko,Melodic Tom,Synth Drum,Reverse Cymbal,Fret Noise,Breath,Seashore,Bird,Telephone,Helicopter,Applause,Gunshot").split(",");
+  function trackLabel(t) { return (t.name || "Track " + (t.idx + 1)) + (t.inst ? " · " + t.inst : ""); }
   function pickMelodyTrack(tracks) {
     const score = tr => {
-      const inRange = tr.notes.filter(n => n.m >= 45 && n.m <= 84).length / tr.notes.length;
-      // monophony: fraction of notes not overlapping the previous
-      let mono = 0; for (let i = 1; i < tr.notes.length; i++) if (tr.notes[i].t >= tr.notes[i - 1].t + tr.notes[i - 1].d * 0.8) mono++;
-      mono = tr.notes.length > 1 ? mono / (tr.notes.length - 1) : 1;
-      const named = /voc|melod|lead|voice|sing|vox/i.test(tr.name) ? 1 : 0;
-      return named * 3 + inRange * 2 + mono * 2 + Math.min(1, tr.notes.length / 200);
+      const n = tr.notes.length;
+      const inRange = tr.notes.filter(x => x.m >= 48 && x.m <= 81).length / n;
+      let mono = 0; for (let i = 1; i < n; i++) if (tr.notes[i].t >= tr.notes[i - 1].t + tr.notes[i - 1].d * 0.8) mono++;
+      mono = n > 1 ? mono / (n - 1) : 1;
+      const named = /voc|melod|lead|voice|sing|vox|karaoke/i.test(tr.name) ? 1 : 0;
+      const p = tr.prog;
+      const inst = p === undefined ? 0 : (p >= 52 && p <= 54) || (p >= 80 && p <= 87) ? 1.5 : (p >= 64 && p <= 79) || p === 22 ? 1 : (p >= 32 && p <= 39) ? -2 : p >= 96 ? -1 : 0;
+      const bassy = tr.notes.filter(x => x.m < 45).length / n;
+      return named * 4 + inst + inRange * 2 + mono * 2.5 - bassy * 3 + Math.min(1, n / 150);
     };
     return tracks.reduce((b, tr) => score(tr) > score(b) ? tr : b, tracks[0]).idx;
   }
 
   // ---------- Songs: library ----------
-  let songs = store.get("songs", []);
+  // Songs are stored compactly (notes as [m,t,d,v] arrays) so a whole playlist fits in localStorage.
+  const packSong = s => ({ ...s, tracks: s.tracks.map(t => ({ ...t, notes: t.notes.map(n => [n.m, n.t, n.d, n.v]) })) });
+  const unpackSong = s => ({ ...s, tracks: s.tracks.map(t => ({ ...t, notes: t.notes.map(n => Array.isArray(n) ? { m: n[0], t: n[1], d: n[2], v: n[3] } : n) })) });
+  let songs = store.get("songs", []).map(unpackSong);
   let songSel = store.get("songSel", null);
   const song = { playing: false, t0: 0, offset: 0, melody: [], others: [], schedIdx: 0, schedOthers: 0, good: 0, total: 0, rate: 1, oct: 0, dur: 0 };
   function renderSongs() {
@@ -665,20 +678,24 @@
         <span class="name">${esc(s.name)}</span>
         <span class="meta">${fmtT(s.dur)}${s.best != null ? " · best " + s.best + "%" : ""}</span>
         <button data-del="${s.id}" title="Remove">✕</button></div>`).join("")
-      : `<p class="hint">No songs yet. Import a .mid file of a song; the app finds the vocal line and plays it as a piano guide.</p>`;
+      : `<p class="hint">No songs yet. Add one from the playlist below; the app finds the vocal line and plays it as a piano guide.</p>`;
     els.songOpts.hidden = els.songOpts2.hidden = els.songCtl.hidden = !songSel;
   }
   const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmtT = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   els.songlist.addEventListener("click", e => {
-    const del = e.target.closest("[data-del]"); if (del) { songStop(); songs = songs.filter(s => s.id !== del.dataset.del); if (songSel === del.dataset.del) songSel = null; saveSongs(); selectSong(songSel); return; }
+    const del = e.target.closest("[data-del]"); if (del) { songStop(); songs = songs.filter(s => s.id !== del.dataset.del); if (songSel === del.dataset.del) songSel = null; saveSongs(); selectSong(songSel); renderLib(); return; }
     const row = e.target.closest("[data-id]"); if (row) selectSong(row.dataset.id);
   });
-  function saveSongs() { store.set("songs", songs); store.set("songSel", songSel); }
+  function saveSongs() {
+    try { localStorage.setItem("pc.songs", JSON.stringify(songs.map(packSong))); }
+    catch (e) { els.songMsg.textContent = "Storage is full: remove a song to save this one."; }
+    store.set("songSel", songSel);
+  }
   function selectSong(id) {
     songStop(); songSel = id; store.set("songSel", id); renderSongs();
     const s = songs.find(x => x.id === id); if (!s) return;
-    els.trackSel.innerHTML = s.tracks.map(t => `<option value="${t.idx}">${esc(t.name || "Track " + (t.idx + 1))} (${t.notes.length})</option>`).join("");
+    els.trackSel.innerHTML = s.tracks.map(t => `<option value="${t.idx}">${esc(trackLabel(t))} (${t.notes.length})</option>`).join("");
     els.trackSel.value = s.track;
     loadSong();
   }
@@ -692,18 +709,48 @@
     els.songScore.textContent = "—"; els.songTime.textContent = `0:00 / ${fmtT(s.dur / song.rate)}`;
     renderRoll();
   }
+  // Built-in playlist: MIDI files hosted on bitmidi.com (which allows the app to load them directly).
+  // `track` pins the vocal line where the auto-picker gets it wrong.
+  const LIBRARY = [
+    { name: "Piano Man — Billy Joel", url: "https://bitmidi.com/uploads/17583.mid", track: 3 },
+    { name: "Africa — Toto", url: "https://bitmidi.com/uploads/105027.mid" },
+    { name: "Total Eclipse of the Heart — Bonnie Tyler", url: "https://bitmidi.com/uploads/19150.mid" },
+    { name: "Werewolves of London — Warren Zevon", url: "https://bitmidi.com/uploads/108498.mid" },
+    { name: "Walk of Life — Dire Straits", url: "https://bitmidi.com/uploads/39670.mid" },
+    { name: "The Joker — Steve Miller Band", url: "https://bitmidi.com/uploads/97064.mid" },
+    { name: "Only Wanna Be With You — Hootie", url: "https://bitmidi.com/uploads/82629.mid" },
+    { name: "Hand in My Pocket — Alanis Morissette", url: "https://bitmidi.com/uploads/75606.mid", track: 4 },
+    { name: "Everybody's Talkin' — Harry Nilsson", url: "https://bitmidi.com/uploads/55195.mid" },
+    { name: "Blister in the Sun — Violent Femmes", url: "https://bitmidi.com/uploads/18281.mid" },
+  ];
+  function renderLib() {
+    const have = new Set(songs.map(s => s.src));
+    els.libSel.innerHTML = LIBRARY.map((l, i) => `<option value="${i}" ${have.has(l.url) ? "disabled" : ""}>${esc(l.name)}${have.has(l.url) ? " ✓" : ""}</option>`).join("");
+    const first = LIBRARY.findIndex(l => !have.has(l.url)); if (first >= 0) els.libSel.value = first;
+  }
+  function addSong(name, tracks, opts = {}) {
+    if (!tracks.length) throw new Error("No notes found");
+    const dur = Math.max(...tracks.flatMap(t => t.notes.map(n => n.t + n.d)));
+    const id = String(Date.now());
+    const track = opts.track !== undefined && tracks.some(t => t.idx === opts.track) ? opts.track : pickMelodyTrack(tracks);
+    songs.push({ id, name, tracks, track, dur: +dur.toFixed(2), best: null, src: opts.src || null });
+    songSel = id; saveSongs(); selectSong(id); renderLib();
+    els.songMsg.textContent = `${tracks.length} tracks`;
+  }
   els.midiFile.addEventListener("change", async () => {
     const f = els.midiFile.files[0]; if (!f) return;
-    try {
-      const tracks = parseMidi(await f.arrayBuffer());
-      if (!tracks.length) throw new Error("No notes found");
-      const dur = Math.max(...tracks.flatMap(t => t.notes.map(n => n.t + n.d)));
-      const id = String(Date.now());
-      songs.push({ id, name: f.name.replace(/\.(mid|midi)$/i, ""), tracks, track: pickMelodyTrack(tracks), dur: +dur.toFixed(2), best: null });
-      songSel = id; saveSongs(); selectSong(id);
-      els.songMsg.textContent = `${tracks.length} tracks`;
-    } catch (e) { els.songMsg.textContent = "Couldn't read that file: " + e.message; }
+    try { addSong(f.name.replace(/\.(mid|midi)$/i, ""), parseMidi(await f.arrayBuffer())); }
+    catch (e) { els.songMsg.textContent = "Couldn't read that file: " + e.message; }
     els.midiFile.value = "";
+  });
+  els.libAdd.addEventListener("click", async () => {
+    const l = LIBRARY[+els.libSel.value]; if (!l) return;
+    els.songMsg.textContent = "loading…"; els.libAdd.disabled = true;
+    try {
+      const r = await fetch(l.url); if (!r.ok) throw new Error("HTTP " + r.status);
+      addSong(l.name, parseMidi(await r.arrayBuffer()), { track: l.track, src: l.url });
+    } catch (e) { els.songMsg.textContent = "Couldn't load it (" + e.message + "). Try again, or download the file and use Import."; }
+    els.libAdd.disabled = false;
   });
   els.trackSel.addEventListener("change", () => { const s = songs.find(x => x.id === songSel); s.track = +els.trackSel.value; saveSongs(); loadSong(); });
   [els.songRate, els.songOct, els.bandOn].forEach(el => el.addEventListener("change", () => { const was = song.playing; songStop(); loadSong(); }));
@@ -811,7 +858,7 @@
     els.rollBox.hidden = m !== "song";
     resetSession(); setHint();
     if (m === "drill") buildDrill();
-    if (m === "song") { renderSongs(); if (songSel) selectSong(songSel); else renderRoll(); }
+    if (m === "song") { renderSongs(); renderLib(); if (songSel) selectSong(songSel); else renderRoll(); }
     if (!running) { renderTrace(performance.now()); renderMeter(null, false); }
   }
   document.querySelectorAll(".modes button").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
